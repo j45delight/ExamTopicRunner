@@ -1,116 +1,160 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Quiz App</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-</head>
-<body>
+  </head>
+  <body>
     <h1>Quiz App</h1>
-    
+    <p>
+      <strong>モード：</strong> {% if mode == "sequential" %} 通常 {% else %}
+      ランダム {% endif %}
+    </p>
     <div id="question-container">
-        <p id="question-text"></p>
-        <form id="quiz-form">
-            <div id="choices-container"></div>
-            <button type="submit">Submit</button>
-        </form>
+      <p id="question-text"></p>
+      <form id="quiz-form">
+        <div id="choices-container"></div>
+        <button type="submit">Submit</button>
+      </form>
     </div>
 
     <p id="result-message"></p>
 
     <!-- ✅ 中断ボタン -->
-    <button id="exit-quiz" style="
-    background-color: red;
-    color: white;
-    padding: 10px 20px;
-    margin-top: 10px;
-    font-size: 16px;
-    border: none;
-    cursor: pointer;
-    display: block;
-    width: fit-content;">
-    🛑 回答を中断してトップに戻る
+    <button
+      id="exit-quiz"
+      style="
+        background-color: red;
+        color: white;
+        padding: 10px 20px;
+        margin-top: 10px;
+        font-size: 16px;
+        border: none;
+        cursor: pointer;
+        display: block;
+        width: fit-content;
+      "
+    >
+      🛑 回答を中断してトップに戻る
     </button>
-    
+
     <!-- ✅ 中断メッセージ -->
-    <p id="exit-message" style="color: red; display: none;">
-    ⚠️ トップに戻っても履歴は保存されます。
+    <p id="exit-message" style="color: red; display: none">
+      ⚠️ トップに戻っても履歴は保存されます。
     </p>
+
     <script>
-        let questions = JSON.parse('{{ quiz_questions_json|escapejs }}');  // Django から受け取った問題IDリスト
-        let currentQuestionIndex = 0;
-        let showFeedback = "{{ show_feedback }}" === "yes";
-    function loadQuestion() {
-    if (currentQuestionIndex >= questions.length) {
-        alert("クイズ終了！履歴ページで結果を確認してください。");
-        window.location.href = "/history/";
-        return;
-    }
+      let questions = JSON.parse("{{ quiz_questions_json|escapejs }}"); // Django から受け取った問題IDリスト
+      let currentQuestionIndex = 0;
+      let showFeedback = "{{ show_feedback }}" === "yes";
 
-    let questionId = questions[currentQuestionIndex];
+      console.log("🛠️ DEBUG: 初期化時の問題リスト →", questions);
+      console.log("🛠️ DEBUG: showFeedback →", showFeedback);
 
-    $.getJSON(`/api/question_by_id/${questionId}/`, function(data) {
-        $("#question-text").text(data.question_text);
-        $("#choices-container").empty();
-
-        let choices = data.choices;
-        for (let key in choices) {
-            $("#choices-container").append(
-                `<label>
-                    <input type="checkbox" name="answers" value="${key.toUpperCase()}"> 
-                    ${key.toUpperCase()}. ${choices[key]}
-                </label><br>`
-            );
+      function loadQuestion() {
+        if (currentQuestionIndex >= questions.length) {
+          alert("クイズ終了！履歴ページで結果を確認してください。");
+          window.location.href = "/history/";
+          return;
         }
 
-        $("#quiz-form").data("question-id", data.id);
-        $("#result-message").text("");
-    });
-}
+        let questionId = questions[currentQuestionIndex];
+        console.log(
+          `🛠️ DEBUG: 現在の問題ID → ${questionId} (Index: ${currentQuestionIndex})`
+        );
 
-$("#quiz-form").submit(function(event) {
-    event.preventDefault();
+        $.getJSON(`/api/question_by_id/${questionId}/`, function (data) {
+          console.log("🛠️ DEBUG: APIから取得したデータ →", data);
 
-    let selectedAnswers = [];
-    $("input[name='answers']:checked").each(function() {
-        selectedAnswers.push($(this).val().toUpperCase());
-    });
+          $("#question-text").text(data.question_text);
+          $("#choices-container").empty();
 
-    $.ajax({
-        url: "/submit/",
-        type: "POST",
-        data: {
+          let choices = data.choices;
+          let correctAnswers = data.correct_answers
+            ? data.correct_answers.map((ans) => ans.toUpperCase())
+            : [];
+
+          console.log("🛠️ DEBUG: 正解の選択肢 →", correctAnswers);
+
+          for (let key in choices) {
+            $("#choices-container").append(
+              `<label>
+                  <input type="checkbox" name="answers" value="${key.toUpperCase()}"> 
+                  <span class="choice-text" data-value="${key.toUpperCase()}">${key.toUpperCase()}. ${
+                choices[key]
+              }</span>
+              </label><br>`
+            );
+          }
+
+          $("#quiz-form").data("question-id", data.id);
+          $("#quiz-form").data("correct-answers", correctAnswers); // ✅ 正解をセット
+          $("#result-message").text("");
+        });
+      }
+
+      $("#quiz-form").submit(function (event) {
+        event.preventDefault();
+
+        let selectedAnswers = [];
+        $("input[name='answers']:checked").each(function () {
+          selectedAnswers.push($(this).val().toUpperCase());
+        });
+
+        let correctAnswers = $("#quiz-form").data("correct-answers"); // ✅ 正解の取得
+
+        $.ajax({
+          url: "/submit/",
+          type: "POST",
+          data: {
             question_id: $("#quiz-form").data("question-id"),
             answers: selectedAnswers,
             history_id: "{{ history_id }}",
-            csrfmiddlewaretoken: "{{ csrf_token }}"
-        },
-        traditional: true,
-        success: function(response) {
-            if (showFeedback) {  // ✅ 正誤表示を選択可能にする
-            if (response.is_correct) {
+            csrfmiddlewaretoken: "{{ csrf_token }}",
+          },
+          traditional: true,
+          success: function (response) {
+            if (showFeedback) {
+              // ✅ 正誤表示を選択可能にする
+              if (response.is_correct) {
                 $("#result-message").text("✅ Correct!");
-            } else {
+              } else {
                 $("#result-message").text("❌ Incorrect!");
+              }
+
+              // ✅ 正解の選択肢を白抜き + 緑背景にする
+              $(".choice-text").each(function () {
+                let choiceValue = $(this).data("value");
+                if (correctAnswers.includes(choiceValue)) {
+                  $(this).css({
+                    color: "white",
+                    "background-color": "green",
+                    padding: "5px",
+                    "border-radius": "5px",
+                  });
+                }
+              });
             }
-        }
             currentQuestionIndex++;
-            setTimeout(loadQuestion, 1000);  // 1秒後に次の問題
+            setTimeout(loadQuestion, 1000); // 1秒後に次の問題
+          },
+        });
+      });
+
+      // ✅ 「回答を中断してトップに戻る」ボタンの処理
+      $("#exit-quiz").click(function () {
+        let confirmExit = confirm(
+          "トップに戻りますか? ※トップに戻っても履歴は保存されます。"
+        );
+
+        if (confirmExit) {
+          window.location.href = "/"; // 🏠 トップページに戻る
         }
-    });
-});
+      });
 
-// ✅ 「回答を中断してトップに戻る」ボタンの処理
-$("#exit-quiz").click(function() {
-    let confirmExit = confirm("トップに戻りますか? ※トップに戻っても履歴は保存されます。");
-    
-    if (confirmExit) {
-        window.location.href = "/";  // 🏠 トップページに戻る
-    }
-});
-$(document).ready(loadQuestion);
+      $(document).ready(loadQuestion);
     </script>
-
-</body>
+  </body>
 </html>

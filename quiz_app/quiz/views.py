@@ -6,8 +6,10 @@ from django.http import JsonResponse
 from django.core.files.storage import FileSystemStorage
 from django.db.models import Count, Sum, F
 from .models import Question, UserResponse, QuizHistory
+from urllib.parse import urlparse, parse_qs
 import uuid
 from django.contrib import messages
+#import pprint
 
 def upload_file(request):
     if request.method == "POST" and request.FILES["excel_file"]:
@@ -98,32 +100,50 @@ def get_random_question(request, subject):
 
 # 回答のチェック
 def submit_answer(request):
-    """回答を送信する処理"""
     if request.method == "POST":
         question_id = request.POST.get("question_id")
-        selected_answers = request.POST.getlist("answers")
+        selected_answers = [ans.upper() for ans in request.POST.getlist("answers")]
 
+        # ✅ 回答履歴の取得
         question = Question.objects.get(id=question_id)
-        is_correct = set(selected_answers) == set(question.correct_answers)
+        correct_answers = [ans.upper() for ans in question.correct_answers]
+        is_correct = set(selected_answers) == set(correct_answers)
 
-        history_id = request.POST.get("history_id")  # 履歴IDを取得
-        history = QuizHistory.objects.filter(id=history_id).first()
+        history_id = request.POST.get("history_id")
+        quiz_history = QuizHistory.objects.get(id=history_id)
 
-        if history:  # ✅ 履歴が存在する場合のみ記録
-            UserResponse.objects.create(
-                quiz_history=history,
-                question=question,
-                selected_answers=selected_answers,
-                is_correct=is_correct
-            )
+        # ✅ 回答記録を保存
+        UserResponse.objects.create(
+            quiz_history=quiz_history, question=question, selected_answers=selected_answers, is_correct=is_correct
+        )
+
+        # ✅ sequential モードのときだけ進捗を更新
+        if quiz_history.mode == "sequential":
+            quiz_history.progress_index += 1
+            quiz_history.save()
 
         return JsonResponse({"is_correct": is_correct})
-
-    return JsonResponse({"error": "Invalid request"}, status=400)
-
+'''
 def quiz_page(request, subject, history_id):
-    return render(request, 'quiz.html', {'subject': subject, 'history_id': history_id})
+    quiz_questions = request.session.get("quiz_questions", [])
+    show_feedback = request.session.get("show_feedback", "yes")
+    
+    quiz_history = QuizHistory.objects.get(id=history_id)
 
+    # ✅ sequential モードのとき、progress_index からスタート
+    if quiz_history.mode == "sequential":
+        current_index = quiz_history.progress_index
+    else:
+        current_index = 0  # ランダムモードは最初から
+
+    return render(request, "quiz.html", {
+        "quiz_questions_json": json.dumps(quiz_questions),
+        "show_feedback": show_feedback,
+        "history_id": history_id,
+        "mode": quiz_history.mode,
+        "current_index": current_index,
+    })
+'''
 
 # ユーザーの回答履歴表示
 def history(request):
@@ -136,15 +156,16 @@ def history(request):
         total_questions = responses.count()
         correct_answers = responses.filter(is_correct=True).count()
         accuracy = round((correct_answers / total_questions * 100), 1) if total_questions > 0 else 0
-
-        history_data.append({
-            "id": history.id,
-            "timestamp": history.timestamp,
-            "subject": history.subject,
-            "total_questions": total_questions,
-            "correct_answers": correct_answers,
-            "accuracy": accuracy
-        })
+        if total_questions > 0:
+            history_data.append({
+                "id": history.id,
+                "timestamp": history.timestamp,
+                "subject": history.subject,
+                "mode": history.mode,
+                "total_questions": total_questions,
+                "correct_answers": correct_answers,
+                "accuracy": accuracy
+            })
 
     return render(request, "history.html", {"histories": history_data})
 '''
@@ -184,41 +205,67 @@ def select_subject(request):
 def quiz_page(request, subject, history_id):
     quiz_questions = request.session.get("quiz_questions", [])
     show_feedback = request.session.get("show_feedback", "yes")  # デフォルトは表示
+    '''mode = request.GET.get("mode")  # ✅ GETリクエストから取得
+    if mode:  # ✅ mode が None でなければセッションに保存
+        request.session["mode"] = mode
+    mode = request.session.get("mode", "random")  # ✅ セッションから取得
+    '''
+    quiz_history = QuizHistory.objects.get(id=history_id)
 
-    if not quiz_questions:
-        return redirect("select_subject")
-
+    # ✅ sequential モードのとき、progress_index からスタート
+    if quiz_history.mode == "sequential":
+        current_index = quiz_history.progress_index
+    else:
+        current_index = 0  # ランダムモードは最初から
     return render(request, "quiz.html", {
         "subject": subject,
         "history_id": history_id,
         "quiz_questions_json": json.dumps(quiz_questions),
         "show_feedback": show_feedback,
+        "mode": quiz_history.mode,  # ✅ モードをテンプレートに渡す
+        "current_index": current_index,
     })
+
 
 def start_quiz(request):
     subject = request.GET.get("subject")
-    num_questions = request.GET.get("num_questions")
+    num_questions = request.GET.get("num_questions", "all")
+    mode = request.GET.get("mode", "random")  # ✅ デフォルトはランダムモード
     show_feedback = request.GET.get("show_feedback", "yes")
 
     if not subject:
         return redirect("select_subject")
 
-    # QuizHistory を作成
-    quiz_history = QuizHistory.objects.create(subject=subject)
+    # ✅ 既存の未完了の sequential モードの履歴を探す
+    if mode == "sequential":
+        quiz_history = QuizHistory.objects.filter(subject=subject, mode="sequential").order_by("-timestamp").first()
+    else:
+        quiz_history = None
+
+    # ✅ 進捗がなければ新規作成
+    if not quiz_history:
+        quiz_history = QuizHistory.objects.create(subject=subject, mode=mode)
 
     # その科目の全問題を取得
     questions = list(Question.objects.filter(subject=subject))
 
-    # もし `num_questions` が "all" なら、全問出題
-    if num_questions == "all":
-        selected_questions = questions
+    # ✅ sequential モードなら、前回の続きから
+    if mode == "sequential":
+        if num_questions == "all":
+            selected_questions = questions[quiz_history.progress_index:]  # ✅ 続きから出題
+        else:
+            num_questions = int(num_questions)
+            selected_questions = questions[quiz_history.progress_index : quiz_history.progress_index + num_questions]
     else:
-        num_questions = int(num_questions)
-        selected_questions = random.sample(questions, min(num_questions, len(questions)))
-    
+        # ✅ ランダムモードはランダム抽出
+        if num_questions == "all":
+            selected_questions = questions
+        else:
+            num_questions = int(num_questions)
+            selected_questions = random.sample(questions, min(num_questions, len(questions)))
+
     # 出題する問題のIDリストをセッションに保存
     request.session["quiz_questions"] = [q.id for q in selected_questions]
-    # 正誤表示の設定をセッションに保存
     request.session["show_feedback"] = show_feedback
 
     return redirect("quiz_page", subject=subject, history_id=quiz_history.id)
@@ -234,7 +281,8 @@ def get_question_by_id(request, question_id):
     return JsonResponse({
         "id": question.id,
         "question_text": question.question_text,
-        "choices": question.choices
+        "choices": question.choices,
+        "correct_answers": question.correct_answers,
     })
 
 def question_performance(request):
@@ -248,24 +296,29 @@ def question_performance(request):
 
     performance_data = []
     for question in questions:
-        responses = UserResponse.objects.filter(question=question).order_by("-timestamp")[:3]  # 最新3回分
-        results = ["-" for _ in range(3)]  # デフォルトで「-」
+        # ✅ 過去の解答履歴を取得（新しい順）
+        user_responses = UserResponse.objects.filter(question=question).order_by('-timestamp')[:3]
+        
+        # ✅ 直近の3回分の結果を取得（なければ '-' にする）
+        latest = "〇" if len(user_responses) > 0 and user_responses[0].is_correct else "×" if len(user_responses) > 0 else "-"
+        second_last = "〇" if len(user_responses) > 1 and user_responses[1].is_correct else "×" if len(user_responses) > 1 else "-"
+        third_last = "〇" if len(user_responses) > 2 and user_responses[2].is_correct else "×" if len(user_responses) > 2 else "-"
 
-        for i, response in enumerate(responses):
-            results[i] = "〇" if response.is_correct else "×"
-
+        # ✅ レンダリング用データ作成
         performance_data.append({
             "number": question.number,
             "question_text": question.question_text,
             "choices": question.choices,
             "correct_answers": question.correct_answers,
-            "last_3_results": results
+            "latest": latest,
+            "second_last": second_last,
+            "third_last": third_last,
         })
 
     return render(request, "question_performance.html", {
-        "subjects": subjects,
+        "subjects": Question.objects.values_list("subject", flat=True).distinct(),
         "selected_subject": selected_subject,
-        "performance_data": performance_data
+        "performance_data": performance_data,
     })
 
 def end_quiz(request, history_id):

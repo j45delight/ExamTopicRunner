@@ -1,23 +1,35 @@
 <h1>回答履歴</h1>
-<p><a href="/" style="font-size: 16px; color: blue; text-decoration: underline;">⬅️ トップに戻る</a></p>
+<p>
+  <a href="/" style="font-size: 16px; color: blue; text-decoration: underline"
+    >⬅️ トップに戻る</a
+  >
+</p>
 
 <table border="1">
-    <tr>
-        <th>#</th>  <!-- ✅ 自動で番号を振る -->
-        <th>Timestamp</th>
-        <th>Subject</th>
-        <th>Result</th>  <!-- ✅ 正解数 / 解答数 -->
-        <th>Accuracy (%)</th>  <!-- ✅ 正答率 -->
-        <th>Details</th>
-    </tr>
-    {% for history in histories %}
-    <tr>
-        <td>{{ forloop.counter }}</td>  <!-- ✅ 自動で1から番号を振る -->
-        <td>{{ history.timestamp }}</td>
-        <td>{{ history.subject }}</td>
-        <td>{{ history.correct_answers }}/{{ history.total_questions }}</td>
-        <td>{{ history.accuracy }}%</td>
-        <td><a href="{% url 'history_detail' history.id %}">View Details</a></td>
-    </tr>
-    {% endfor %}
+  <tr>
+    <th>#</th>
+    <!-- ✅ 自動で番号を振る -->
+    <th>日時</th>
+    <th>科目</th>
+    <th>モード</th>
+    <th>結果</th>
+    <!-- ✅ 正解数 / 解答数 -->
+    <th>正答率 (%)</th>
+    <!-- ✅ 正答率 -->
+    <th>詳細</th>
+  </tr>
+  {% for history in histories %}
+  <tr>
+    <td>{{ forloop.counter }}</td>
+    <!-- ✅ 自動で1から番号を振る -->
+    <td>{{ history.timestamp }}</td>
+    <td>{{ history.subject }}</td>
+    <td>
+      {% if history.mode == "sequential" %} 通常 {% else %} ランダム {% endif %}
+    </td>
+    <td>{{ history.correct_answers }}/{{ history.total_questions }}</td>
+    <td>{{ history.accuracy }}%</td>
+    <td><a href="{% url 'history_detail' history.id %}">View Details</a></td>
+  </tr>
+  {% endfor %}
 </table>
