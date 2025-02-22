@@ -6,8 +6,10 @@ from django.http import JsonResponse
 from django.core.files.storage import FileSystemStorage
 from django.db.models import Count, Sum, F
 from .models import Question, UserResponse, QuizHistory
+from urllib.parse import urlparse, parse_qs
 import uuid
 from django.contrib import messages
+#import pprint
 
 def upload_file(request):
     if request.method == "POST" and request.FILES["excel_file"]:
@@ -184,42 +186,55 @@ def select_subject(request):
 def quiz_page(request, subject, history_id):
     quiz_questions = request.session.get("quiz_questions", [])
     show_feedback = request.session.get("show_feedback", "yes")  # デフォルトは表示
-
-    if not quiz_questions:
-        return redirect("select_subject")
+    mode = request.GET.get("mode")  # ✅ GETリクエストから取得
+    if mode:  # ✅ mode が None でなければセッションに保存
+        request.session["mode"] = mode
+    mode = request.session.get("mode", "random")  # ✅ セッションから取得
+    print("Show feedback", show_feedback)  # ✅ セッションに保存されたか確認
 
     return render(request, "quiz.html", {
         "subject": subject,
         "history_id": history_id,
         "quiz_questions_json": json.dumps(quiz_questions),
         "show_feedback": show_feedback,
+        "mode": mode  # ✅ モードをテンプレートに渡す
     })
 
 def start_quiz(request):
     subject = request.GET.get("subject")
-    num_questions = request.GET.get("num_questions")
+    num_questions = request.GET.get("num_questions", "all")
+    mode = request.GET.get("mode", "random")  # ✅ デフォルトはランダムモード
     show_feedback = request.GET.get("show_feedback", "yes")
 
     if not subject:
         return redirect("select_subject")
 
-    # QuizHistory を作成
-    quiz_history = QuizHistory.objects.create(subject=subject)
+    # ✅ 途中から再開のため、前回の `history_id` を取得
+    last_history = QuizHistory.objects.filter(subject=subject).order_by("-timestamp").first()
 
-    # その科目の全問題を取得
-    questions = list(Question.objects.filter(subject=subject))
-
-    # もし `num_questions` が "all" なら、全問出題
-    if num_questions == "all":
-        selected_questions = questions
+    if mode == "sequential" and last_history:
+        # ✅ 途中から再開: まだ解いていない問題を取得
+        answered_question_ids = UserResponse.objects.filter(quiz_history=last_history).values_list("question_id", flat=True)
+        remaining_questions = Question.objects.filter(subject=subject).exclude(id__in=answered_question_ids)
+        
+        if remaining_questions.exists():
+            selected_questions = list(remaining_questions)[:int(num_questions)]
+            quiz_history = last_history  # 既存の履歴を使う
+        else:
+            # ✅ すべて解き終わったら新しい履歴を作成
+            selected_questions = list(Question.objects.filter(subject=subject)[:int(num_questions)])
+            quiz_history = QuizHistory.objects.create(subject=subject)
     else:
-        num_questions = int(num_questions)
-        selected_questions = random.sample(questions, min(num_questions, len(questions)))
-    
-    # 出題する問題のIDリストをセッションに保存
+        # ✅ ランダムモード: 毎回ランダムに出題
+        questions = list(Question.objects.filter(subject=subject))
+        selected_questions = random.sample(questions, min(int(num_questions), len(questions)))
+        quiz_history = QuizHistory.objects.create(subject=subject)
+
+    # ✅ 出題する問題のIDリストをセッションに保存
     request.session["quiz_questions"] = [q.id for q in selected_questions]
-    # 正誤表示の設定をセッションに保存
     request.session["show_feedback"] = show_feedback
+    request.session["quiz_history_id"] = quiz_history.id  # ✅ 履歴IDを保存
+    request.session["mode"] = mode
 
     return redirect("quiz_page", subject=subject, history_id=quiz_history.id)
 
@@ -234,7 +249,8 @@ def get_question_by_id(request, question_id):
     return JsonResponse({
         "id": question.id,
         "question_text": question.question_text,
-        "choices": question.choices
+        "choices": question.choices,
+        "correct_answers": question.correct_answers,
     })
 
 def question_performance(request):
@@ -248,24 +264,29 @@ def question_performance(request):
 
     performance_data = []
     for question in questions:
-        responses = UserResponse.objects.filter(question=question).order_by("-timestamp")[:3]  # 最新3回分
-        results = ["-" for _ in range(3)]  # デフォルトで「-」
+        # ✅ 過去の解答履歴を取得（新しい順）
+        user_responses = UserResponse.objects.filter(question=question).order_by('-timestamp')[:3]
+        
+        # ✅ 直近の3回分の結果を取得（なければ '-' にする）
+        latest = "〇" if len(user_responses) > 0 and user_responses[0].is_correct else "×" if len(user_responses) > 0 else "-"
+        second_last = "〇" if len(user_responses) > 1 and user_responses[1].is_correct else "×" if len(user_responses) > 1 else "-"
+        third_last = "〇" if len(user_responses) > 2 and user_responses[2].is_correct else "×" if len(user_responses) > 2 else "-"
 
-        for i, response in enumerate(responses):
-            results[i] = "〇" if response.is_correct else "×"
-
+        # ✅ レンダリング用データ作成
         performance_data.append({
             "number": question.number,
             "question_text": question.question_text,
             "choices": question.choices,
             "correct_answers": question.correct_answers,
-            "last_3_results": results
+            "latest": latest,
+            "second_last": second_last,
+            "third_last": third_last,
         })
 
     return render(request, "question_performance.html", {
-        "subjects": subjects,
+        "subjects": Question.objects.values_list("subject", flat=True).distinct(),
         "selected_subject": selected_subject,
-        "performance_data": performance_data
+        "performance_data": performance_data,
     })
 
 def end_quiz(request, history_id):

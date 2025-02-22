@@ -5,7 +5,6 @@ urlpatterns = [
     path('', views.select_subject, name='select_subject'),
     path('upload/', views.upload_file, name='upload_file'),
     path('start_quiz/', views.start_quiz, name='start_quiz'),  # クイズ開始
-    path('quiz/', views.quiz_page, name='quiz'),  # クイズページ表示用
     path('quiz/<str:subject>/<int:history_id>/', views.quiz_page, name='quiz_page'),
     path('api/question/<str:subject>/', views.get_random_question, name='get_random_question'),  # 科目別API
     #path('api/question/', views.get_random_question, name='get_random_question'),  # 問題取得API

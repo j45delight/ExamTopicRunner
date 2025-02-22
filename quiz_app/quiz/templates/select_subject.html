@@ -1,34 +1,58 @@
-<h1>トップページ</h1>
-<p><a href="/history/" style="font-size: 16px; color: blue; text-decoration: underline;">📜 履歴一覧を見る</a></p>
-<p><a href="/question_performance/" style="font-size: 16px; color: purple; text-decoration: underline;">📊 設問ごとの回答成績を見る</a></p>
-<p><a href="/upload/" style="font-size: 16px; color: green; text-decoration: underline;">📤 クイズデータをアップロード</a></p>
+<h1>ExamTopicRunner</h1>
+Created By Toshiki Ohtsuka
+<p>
+  <a
+    href="/history/"
+    style="font-size: 16px; color: blue; text-decoration: underline"
+    >📜 履歴一覧を見る</a
+  >
+</p>
+<p>
+  <a
+    href="/question_performance/"
+    style="font-size: 16px; color: purple; text-decoration: underline"
+    >📊 設問ごとの回答成績を見る</a
+  >
+</p>
+<p>
+  <a
+    href="/upload/"
+    style="font-size: 16px; color: green; text-decoration: underline"
+    >📤 クイズデータをアップロード</a
+  >
+</p>
 
-<form action="{% url 'start_quiz' %}" method="get">
-    <label>科目を選択:</label>
-    <select name="subject" required>
-        {% for item in subjects %}
-            <option value="{{ item.subject }}">{{ item.subject }} ({{ item.total_questions }} 問)</option>
-        {% endfor %}
+<form action="{% url 'start_quiz' %}" method="GET">
+  <label for="subject">科目を選択：</label>
+  <select name="subject" id="subject">
+    {% for subject in subjects %}
+    <option value="{{ subject.subject }}">
+      {{ subject.subject }}（{{ subject.total_questions }}問）
+    </option>
+    {% endfor %}
+  </select>
 
-    </select>
+  <label for="mode">モードを選択：</label>
+  <select name="mode" id="mode">
+    <option value="random" {% if mode == "random" %}selected{% endif %}>ランダムモード</option>
+    <option value="sequential" {% if mode == "sequential" %}selected{% endif %}>通常モード</option>
+  </select>
 
-    <label>解く問題数を選択:</label>
-    <select name="num_questions">
-        <option value="5">5</option>
-        <option value="10">10</option>
-        <option value="20">20</option>
-        <option value="50">50</option>
-        <option value="100">100</option>
-        <option value="all">all</option>
-    </select>
-
-    <label>正誤表示:</label>
+  <label for="num_questions">出題数：</label>
+  <select name="num_questions" id="num_questions">
+    <option value="5">5問</option>
+    <option value="10">10問</option>
+    <option value="20">20問</option>
+    <option value="50">50問</option>
+    <option value="100">100問</option>
+    <option value="all">全部</option>
+  </select>
+  <label>正誤表示:</label>
     <select name="show_feedback">
         <option value="yes">表示する</option>
         <option value="no">表示しない</option>
     </select>
-
-    <button type="submit">Start</button>
+  <button type="submit">クイズを開始</button>
 </form>
 
 <h1>問題集の管理</h1>
@@ -36,21 +60,35 @@
 <!-- ✅ インポートしたExcelごとの削除ボタン -->
 <h2>アップロード済みの問題集</h2>
 <table border="1">
-    <tr>
-        <th>科目</th>
-        <th>問題数</th>
-        <th>削除</th>
-    </tr>
-    {% for batch in batch_list %}
-    <tr>
-        <td>{{ batch.subject }}</td>
-        <td>{{ batch.question_count }}</td>
-        <td>
-            <form method="post" action="{% url 'delete_questions_by_batch' batch.batch_id %}" onsubmit="return confirm('⚠️ この問題集を削除しますか？');">
-                {% csrf_token %}
-                <button type="submit" style="background-color: red; color: white; padding: 5px; border: none;">🗑️ 削除</button>
-            </form>
-        </td>
-    </tr>
-    {% endfor %}
+  <tr>
+    <th>科目</th>
+    <th>問題数</th>
+    <th>削除</th>
+  </tr>
+  {% for batch in batch_list %}
+  <tr>
+    <td>{{ batch.subject }}</td>
+    <td>{{ batch.question_count }}</td>
+    <td>
+      <form
+        method="post"
+        action="{% url 'delete_questions_by_batch' batch.batch_id %}"
+        onsubmit="return confirm('⚠️ この問題集を削除しますか？');"
+      >
+        {% csrf_token %}
+        <button
+          type="submit"
+          style="
+            background-color: red;
+            color: white;
+            padding: 5px;
+            border: none;
+          "
+        >
+          🗑️ 削除
+        </button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
 </table>
