@@ -33,7 +33,7 @@ Created By Toshiki Ohtsuka
   </select>
 
   <label for="mode">モードを選択：</label>
-  <select name="mode" id="mode">
+  <select name="mode" id="mode" required onchange="updateModeDescription()">
     <option value="random" {% if mode == "random" %}selected{% endif %}>ランダムモード</option>
     <option value="sequential" {% if mode == "sequential" %}selected{% endif %}>通常モード</option>
   </select>
@@ -53,7 +53,30 @@ Created By Toshiki Ohtsuka
         <option value="no">表示しない</option>
     </select>
   <button type="submit">クイズを開始</button>
+  <br><br>
+  <!-- ✅ モード説明 -->
+  <div id="mode-description" style="font-size: 14px; color: gray;">
+    <!-- JavaScriptで説明を更新 -->
+  </div>
 </form>
+
+<!-- ✅ JavaScript: モード説明を更新 -->
+<script>
+  function updateModeDescription() {
+      let modeSelect = document.getElementById("mode");
+      let descriptionDiv = document.getElementById("mode-description");
+      let selectedMode = modeSelect.value;
+
+      if (selectedMode === "sequential") {
+          descriptionDiv.innerHTML = "📌 <b>順番に解くモード</b>: 問題を順番に解きます。途中で中断しても、次回は続きから解答できます。1周すると最初からに戻ります。";
+      } else if (selectedMode === "random") {
+          descriptionDiv.innerHTML = "🎲 <b>ランダムモード</b>: 選択した問題数の範囲内で、毎回ランダムに問題が出題されます。";
+      }
+  }
+
+  // ✅ ページロード時に説明を設定
+  document.addEventListener("DOMContentLoaded", updateModeDescription);
+</script>
 
 <h1>問題集の管理</h1>
 
