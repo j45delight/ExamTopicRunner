@@ -20,6 +20,8 @@ class Question(models.Model):
 class QuizHistory(models.Model):
     subject = models.CharField(max_length=255)  # どの科目を受けたか
     timestamp = models.DateTimeField(default=now)  # 受験日時
+    mode = models.CharField(max_length=10, choices=[("random", "Random"), ("sequential", "Sequential")])  # ✅ 修正
+    progress_index = models.IntegerField(default=0)  # ✅ 進捗用
 
     def __str__(self):
         return f"{self.subject} ({self.timestamp.strftime('%Y-%m-%d %H:%M:%S')})"

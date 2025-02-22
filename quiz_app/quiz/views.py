@@ -100,31 +100,49 @@ def get_random_question(request, subject):
 
 # 回答のチェック
 def submit_answer(request):
-    """回答を送信する処理"""
     if request.method == "POST":
         question_id = request.POST.get("question_id")
-        selected_answers = request.POST.getlist("answers")
+        selected_answers = [ans.upper() for ans in request.POST.getlist("answers")]
 
+        # ✅ 回答履歴の取得
         question = Question.objects.get(id=question_id)
-        is_correct = set(selected_answers) == set(question.correct_answers)
+        correct_answers = [ans.upper() for ans in question.correct_answers]
+        is_correct = set(selected_answers) == set(correct_answers)
 
-        history_id = request.POST.get("history_id")  # 履歴IDを取得
-        history = QuizHistory.objects.filter(id=history_id).first()
+        history_id = request.POST.get("history_id")
+        quiz_history = QuizHistory.objects.get(id=history_id)
 
-        if history:  # ✅ 履歴が存在する場合のみ記録
-            UserResponse.objects.create(
-                quiz_history=history,
-                question=question,
-                selected_answers=selected_answers,
-                is_correct=is_correct
-            )
+        # ✅ 回答記録を保存
+        UserResponse.objects.create(
+            quiz_history=quiz_history, question=question, selected_answers=selected_answers, is_correct=is_correct
+        )
+
+        # ✅ sequential モードのときだけ進捗を更新
+        if quiz_history.mode == "sequential":
+            quiz_history.progress_index += 1
+            quiz_history.save()
 
         return JsonResponse({"is_correct": is_correct})
 
-    return JsonResponse({"error": "Invalid request"}, status=400)
-
 def quiz_page(request, subject, history_id):
-    return render(request, 'quiz.html', {'subject': subject, 'history_id': history_id})
+    quiz_questions = request.session.get("quiz_questions", [])
+    show_feedback = request.session.get("show_feedback", "yes")
+    
+    quiz_history = QuizHistory.objects.get(id=history_id)
+
+    # ✅ sequential モードのとき、progress_index からスタート
+    if quiz_history.mode == "sequential":
+        current_index = quiz_history.progress_index
+    else:
+        current_index = 0  # ランダムモードは最初から
+
+    return render(request, "quiz.html", {
+        "quiz_questions_json": json.dumps(quiz_questions),
+        "show_feedback": show_feedback,
+        "history_id": history_id,
+        "mode": quiz_history.mode,
+        "current_index": current_index,
+    })
 
 
 # ユーザーの回答履歴表示
@@ -209,32 +227,37 @@ def start_quiz(request):
     if not subject:
         return redirect("select_subject")
 
-    # ✅ 途中から再開のため、前回の `history_id` を取得
-    last_history = QuizHistory.objects.filter(subject=subject).order_by("-timestamp").first()
-
-    if mode == "sequential" and last_history:
-        # ✅ 途中から再開: まだ解いていない問題を取得
-        answered_question_ids = UserResponse.objects.filter(quiz_history=last_history).values_list("question_id", flat=True)
-        remaining_questions = Question.objects.filter(subject=subject).exclude(id__in=answered_question_ids)
-        
-        if remaining_questions.exists():
-            selected_questions = list(remaining_questions)[:int(num_questions)]
-            quiz_history = last_history  # 既存の履歴を使う
-        else:
-            # ✅ すべて解き終わったら新しい履歴を作成
-            selected_questions = list(Question.objects.filter(subject=subject)[:int(num_questions)])
-            quiz_history = QuizHistory.objects.create(subject=subject)
+    # ✅ 既存の未完了の sequential モードの履歴を探す
+    if mode == "sequential":
+        quiz_history = QuizHistory.objects.filter(subject=subject, mode="sequential").order_by("-timestamp").first()
     else:
-        # ✅ ランダムモード: 毎回ランダムに出題
-        questions = list(Question.objects.filter(subject=subject))
-        selected_questions = random.sample(questions, min(int(num_questions), len(questions)))
-        quiz_history = QuizHistory.objects.create(subject=subject)
+        quiz_history = None
 
-    # ✅ 出題する問題のIDリストをセッションに保存
+    # ✅ 進捗がなければ新規作成
+    if not quiz_history:
+        quiz_history = QuizHistory.objects.create(subject=subject, mode=mode)
+
+    # その科目の全問題を取得
+    questions = list(Question.objects.filter(subject=subject))
+
+    # ✅ sequential モードなら、前回の続きから
+    if mode == "sequential":
+        if num_questions == "all":
+            selected_questions = questions[quiz_history.progress_index:]  # ✅ 続きから出題
+        else:
+            num_questions = int(num_questions)
+            selected_questions = questions[quiz_history.progress_index : quiz_history.progress_index + num_questions]
+    else:
+        # ✅ ランダムモードはランダム抽出
+        if num_questions == "all":
+            selected_questions = questions
+        else:
+            num_questions = int(num_questions)
+            selected_questions = random.sample(questions, min(num_questions, len(questions)))
+
+    # 出題する問題のIDリストをセッションに保存
     request.session["quiz_questions"] = [q.id for q in selected_questions]
     request.session["show_feedback"] = show_feedback
-    request.session["quiz_history_id"] = quiz_history.id  # ✅ 履歴IDを保存
-    request.session["mode"] = mode
 
     return redirect("quiz_page", subject=subject, history_id=quiz_history.id)
 
