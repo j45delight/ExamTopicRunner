@@ -1,3 +1,4 @@
+{% extends "base.html" %} {% block content %}
 <h1>設問ごとの回答成績</h1>
 <!-- ✅ トップに戻るリンク -->
 <p><a href="/" style="font-size: 16px; color: blue; text-decoration: underline;">⬅️ トップに戻る</a></p>
@@ -15,28 +16,29 @@
 <table border="1">
     <tr>
         <th>番号</th>
-        <th>問題</th>
-        <th>選択肢</th>
+        <th class="question-col">問題</th>
+        <th class="question-col">選択肢</th>
         <th>正解</th>
-        <th>最新の成績</th>  <!-- ✅ 直近の成績 -->
-        <th>2回前</th>  <!-- ✅ 2回前の成績 -->
-        <th>3回前</th>  <!-- ✅ 3回前の成績 -->
+        <th class="history-col1">最新の成績</th>  <!-- ✅ 直近の成績 -->
+        <th class="history-col">2回前</th>  <!-- ✅ 2回前の成績 -->
+        <th class="history-col">3回前</th>  <!-- ✅ 3回前の成績 -->
     </tr>
     {% for question in performance_data %}
     <tr>
         <td>{{ question.number }}</td>
-        <td>{{ question.question_text }}</td>
-        <td>
+        <td class="text-left">{{ question.question_text }}</td>  <!-- ✅ 左揃え -->
+        <td class="text-left">
             <ul>
                 {% for key, value in question.choices.items %}
                     <li>{{ key }}. {{ value }}</li>
                 {% endfor %}
             </ul>
-        </td>
+        </td>  <!-- ✅ 左揃え -->
         <td>{{ question.correct_answers|join:", " }}</td>
-        <td>{{ question.latest }}</td>  <!-- ✅ 最新の成績 -->
-        <td>{{ question.second_last }}</td>  <!-- ✅ 2回前 -->
-        <td>{{ question.third_last }}</td>  <!-- ✅ 3回前 -->
+        <td>{{ question.latest }}</td>
+        <td>{{ question.second_last }}</td>
+        <td>{{ question.third_last }}</td>
     </tr>
     {% endfor %}
 </table>
+{% endblock %}

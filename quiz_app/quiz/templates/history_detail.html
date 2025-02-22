@@ -1,21 +1,22 @@
+{% extends "base.html" %} {% block content %}
 <h1>回答詳細: {{ history.subject }} ({{ history.timestamp }})</h1>
 
 <table border="1">
-    <tr>
-        <th>Question</th>
-        <th>Your Answer</th>
-        <th>Correct Answer</th>
-        <th>Correct?</th>
-    </tr>
-    {% for response in responses %}
-    <tr>
-        <td>{{ response.question.question_text }}</td>
-        <td>{{ response.selected_answers }}</td>
-        <td>{{ response.question.correct_answers }}</td>
-        <td>{% if response.is_correct %} ✅ {% else %} ❌ {% endif %}</td>
-    </tr>
-    {% endfor %}
+  <tr>
+    <th>Question</th>
+    <th>Your Answer</th>
+    <th>Correct Answer</th>
+    <th>Correct?</th>
+  </tr>
+  {% for response in responses %}
+  <tr>
+    <td>{{ response.question.question_text }}</td>
+    <td>{{ response.selected_answers }}</td>
+    <td>{{ response.question.correct_answers }}</td>
+    <td>{% if response.is_correct %} ✅ {% else %} ❌ {% endif %}</td>
+  </tr>
+  {% endfor %}
 </table>
 
 <a href="{% url 'history' %}">Back to History</a>
-
+{% endblock %}
