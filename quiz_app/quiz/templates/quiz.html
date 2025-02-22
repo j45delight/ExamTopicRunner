@@ -8,7 +8,10 @@
   </head>
   <body>
     <h1>Quiz App</h1>
-
+    <p>
+      <strong>モード：</strong> {% if mode == "sequential" %} 通常 {% else %}
+      ランダム {% endif %}
+    </p>
     <div id="question-container">
       <p id="question-text"></p>
       <form id="quiz-form">

@@ -123,7 +123,7 @@ def submit_answer(request):
             quiz_history.save()
 
         return JsonResponse({"is_correct": is_correct})
-
+'''
 def quiz_page(request, subject, history_id):
     quiz_questions = request.session.get("quiz_questions", [])
     show_feedback = request.session.get("show_feedback", "yes")
@@ -143,7 +143,7 @@ def quiz_page(request, subject, history_id):
         "mode": quiz_history.mode,
         "current_index": current_index,
     })
-
+'''
 
 # ユーザーの回答履歴表示
 def history(request):
@@ -156,15 +156,16 @@ def history(request):
         total_questions = responses.count()
         correct_answers = responses.filter(is_correct=True).count()
         accuracy = round((correct_answers / total_questions * 100), 1) if total_questions > 0 else 0
-
-        history_data.append({
-            "id": history.id,
-            "timestamp": history.timestamp,
-            "subject": history.subject,
-            "total_questions": total_questions,
-            "correct_answers": correct_answers,
-            "accuracy": accuracy
-        })
+        if total_questions > 0:
+            history_data.append({
+                "id": history.id,
+                "timestamp": history.timestamp,
+                "subject": history.subject,
+                "mode": history.mode,
+                "total_questions": total_questions,
+                "correct_answers": correct_answers,
+                "accuracy": accuracy
+            })
 
     return render(request, "history.html", {"histories": history_data})
 '''
@@ -204,19 +205,27 @@ def select_subject(request):
 def quiz_page(request, subject, history_id):
     quiz_questions = request.session.get("quiz_questions", [])
     show_feedback = request.session.get("show_feedback", "yes")  # デフォルトは表示
-    mode = request.GET.get("mode")  # ✅ GETリクエストから取得
+    '''mode = request.GET.get("mode")  # ✅ GETリクエストから取得
     if mode:  # ✅ mode が None でなければセッションに保存
         request.session["mode"] = mode
     mode = request.session.get("mode", "random")  # ✅ セッションから取得
-    print("Show feedback", show_feedback)  # ✅ セッションに保存されたか確認
+    '''
+    quiz_history = QuizHistory.objects.get(id=history_id)
 
+    # ✅ sequential モードのとき、progress_index からスタート
+    if quiz_history.mode == "sequential":
+        current_index = quiz_history.progress_index
+    else:
+        current_index = 0  # ランダムモードは最初から
     return render(request, "quiz.html", {
         "subject": subject,
         "history_id": history_id,
         "quiz_questions_json": json.dumps(quiz_questions),
         "show_feedback": show_feedback,
-        "mode": mode  # ✅ モードをテンプレートに渡す
+        "mode": quiz_history.mode,  # ✅ モードをテンプレートに渡す
+        "current_index": current_index,
     })
+
 
 def start_quiz(request):
     subject = request.GET.get("subject")
